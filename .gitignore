@@ -2,3 +2,6 @@
 **/.DS_Store
 **/._*
 **/.ipynb_checkpoints/
+clearvoice/checkpoints
+clearvoice/clearvoice.egg-info
+clearvoice/samples
