@@ -160,13 +160,24 @@ std::vector<float> Istft(const std::vector<std::complex<float>>& spectrum) {
 
 class Enhancer::Impl {
  public:
-  Impl(const std::string& model_path, const std::string& requested_provider)
-      : env(ORT_LOGGING_LEVEL_WARNING, "clearvoice_se") {
+  Impl(const std::string& model_path, const std::string& requested_provider) {
+    const OrtApiBase* api_base = OrtGetApiBase();
+    if (api_base == nullptr || api_base->GetApi(ORT_API_VERSION) == nullptr) {
+      const std::string runtime_version =
+          api_base == nullptr ? "unknown" : api_base->GetVersionString();
+      throw std::runtime_error(
+          "ONNX Runtime API mismatch: headers request API " +
+          std::to_string(ORT_API_VERSION) + ", runtime version is " +
+          runtime_version + ". Rebuild with matching headers and library.");
+    }
+    env = std::make_unique<Ort::Env>(ORT_LOGGING_LEVEL_WARNING,
+                                     "clearvoice_se");
     const std::filesystem::path ort_model_path(model_path);
     options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
     ConfigureProvider(requested_provider);
     try {
-      session = std::make_unique<Ort::Session>(env, ort_model_path.c_str(), options);
+      session = std::make_unique<Ort::Session>(
+          *env, ort_model_path.c_str(), options);
       if (active_provider != "cpu" && !ProviderSelfTest()) {
         throw std::runtime_error(active_provider +
                                  " provider returned an invalid all-zero mask");
@@ -177,7 +188,8 @@ class Enhancer::Impl {
       options = Ort::SessionOptions{};
       options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
       active_provider = "cpu";
-      session = std::make_unique<Ort::Session>(env, ort_model_path.c_str(), options);
+      session = std::make_unique<Ort::Session>(
+          *env, ort_model_path.c_str(), options);
     }
   }
 
@@ -296,7 +308,7 @@ class Enhancer::Impl {
     return output;
   }
 
-  Ort::Env env;
+  std::unique_ptr<Ort::Env> env;
   Ort::SessionOptions options;
   std::unique_ptr<Ort::Session> session;
   std::string active_provider = "cpu";

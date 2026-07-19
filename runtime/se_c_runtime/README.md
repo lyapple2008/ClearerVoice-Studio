@@ -36,6 +36,31 @@ conda run -n clearer_voice python runtime/se_c_runtime/tools/export_onnx.py
 
 需要 CMake 3.20+、C++17 编译器和 ONNX Runtime 开发包。CMake 会下载固定提交的 kaldi-native-fbank 及其 KissFFT 依赖。
 
+### macOS：使用官方匹配发行包（推荐）
+
+不要混用 Homebrew 头文件和 conda/Python wheel 动态库。以下命令下载本项目已验证的
+ONNX Runtime 1.23.2 arm64 发行包：
+
+```bash
+curl -L --fail -o /tmp/onnxruntime-osx-arm64-1.23.2.tgz \
+  https://github.com/microsoft/onnxruntime/releases/download/v1.23.2/onnxruntime-osx-arm64-1.23.2.tgz
+
+echo "b4d513ab2b26f088c66891dbbc1408166708773d7cc4163de7bdca0e9bbb7856  /tmp/onnxruntime-osx-arm64-1.23.2.tgz" \
+  | shasum -a 256 -c -
+
+mkdir -p runtime/se_c_runtime/third_party
+tar -xzf /tmp/onnxruntime-osx-arm64-1.23.2.tgz \
+  -C runtime/se_c_runtime/third_party
+
+cmake -S runtime/se_c_runtime -B runtime/se_c_runtime/build \
+  -UONNXRUNTIME_INCLUDE_DIR \
+  -UONNXRUNTIME_LIBRARY \
+  -Uonnxruntime_DIR \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DONNXRUNTIME_ROOT="$PWD/runtime/se_c_runtime/third_party/onnxruntime-osx-arm64-1.23.2"
+cmake --build runtime/se_c_runtime/build -j
+```
+
 ### 使用已安装的 CMake package
 
 ```bash
@@ -56,6 +81,25 @@ cmake -S runtime/se_c_runtime -B runtime/se_c_runtime/build \
   -DONNXRUNTIME_LIBRARY=/path/to/onnxruntime/library
 cmake --build runtime/se_c_runtime/build -j
 ```
+
+`ONNXRUNTIME_INCLUDE_DIR` 和 `ONNXRUNTIME_LIBRARY` 必须来自同一个 ONNX Runtime
+发行包及版本。不能将 Homebrew 的头文件与 conda/Python wheel 的动态库混用；CMake
+会在配置阶段执行 API 兼容性检查并拒绝这种组合。
+
+macOS 使用 Homebrew 时必须确保 Homebrew 的 ONNX Runtime 及其全部依赖处于一致状态：
+
+```bash
+cmake -S runtime/se_c_runtime -B runtime/se_c_runtime/build \
+  -UONNXRUNTIME_INCLUDE_DIR \
+  -UONNXRUNTIME_LIBRARY \
+  -UONNXRUNTIME_ROOT \
+  -Uonnxruntime_DIR \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_PREFIX_PATH=/opt/homebrew/opt/onnxruntime
+cmake --build runtime/se_c_runtime/build -j
+```
+
+ONNX Runtime 升级后必须重新运行上述 CMake 配置和构建命令，不能继续使用旧二进制。
 
 Windows 使用 CUDA 版 ONNX Runtime 时，运行阶段还需确保 `onnxruntime.dll` 及 CUDA/cuDNN DLL 在 `PATH` 中。
 
