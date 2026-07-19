@@ -87,20 +87,33 @@ if(NOT CMAKE_CROSSCOMPILING)
   endif()
 endif()
 
-add_executable(clearvoice_se
+add_library(clearvoice_runtime STATIC
   src/audio_io.cpp
+  src/bandwidth_sub.cpp
+  src/clearvoice.cpp
   src/enhancer.cpp
-  src/main.cpp
+  src/gan_model.cpp
+  src/onnx_runner.cpp
+  src/resample.cpp
 )
-target_link_libraries(clearvoice_se PRIVATE
+target_link_libraries(clearvoice_runtime PUBLIC
   kaldi-native-fbank-core
   kissfft
   ${ONNXRUNTIME_TARGET}
 )
-target_include_directories(clearvoice_se PRIVATE ${kaldi_native_fbank_SOURCE_DIR})
+target_include_directories(clearvoice_runtime PUBLIC
+  ${CMAKE_CURRENT_SOURCE_DIR}/src
+  ${kaldi_native_fbank_SOURCE_DIR}
+)
+
+add_executable(clearvoice src/clearvoice_main.cpp)
+target_link_libraries(clearvoice PRIVATE clearvoice_runtime)
+
+add_executable(clearvoice_se src/main.cpp)
+target_link_libraries(clearvoice_se PRIVATE clearvoice_runtime)
 
 if(MSVC)
-  target_compile_options(clearvoice_se PRIVATE /W4)
+  target_compile_options(clearvoice_runtime PRIVATE /W4)
 else()
-  target_compile_options(clearvoice_se PRIVATE -Wall -Wextra -Wpedantic)
+  target_compile_options(clearvoice_runtime PRIVATE -Wall -Wextra -Wpedantic)
 endif()

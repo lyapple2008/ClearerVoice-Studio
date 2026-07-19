@@ -1,0 +1,6 @@
+.build/
+.cache/
+.swift-home/
+.swiftpm/
+.derivedData/
+build/

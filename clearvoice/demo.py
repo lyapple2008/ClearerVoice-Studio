@@ -1,7 +1,7 @@
 from clearvoice import ClearVoice
 
 ##-----Demo One: use MossFormer2_SR_48K model for speech super-resolution -----------------
-if False:
+if True:
     myClearVoice = ClearVoice(task='speech_super_resolution', model_names=['MossFormer2_SR_48K'])
 
     ##1sd calling method: process the waveform from input file and return output waveform, then write to output_MossFormer2_SR_48K_xxx with the same audio format
@@ -15,7 +15,7 @@ if False:
     myClearVoice(input_path='samples/scp/audio_samples_sr.scp', online_write=True, output_path='samples/path_to_output_wavs_scp')
     
 ##-----Demo Two: use MossFormer2_SR_48K model for speech super-resolution on noisy speech data-----------------
-if False:
+if True:
     # Assume you have noisy speech audios and want to do speech super-resolution
     # Constructs two objects for speech enhancement and super-resolution, respectively.
     myClearVoice_SE = ClearVoice(task='speech_enhancement', model_names=['MossFormer2_SE_48K'])
@@ -36,7 +36,7 @@ if False:
     myClearVoice_SR.write(output_wav, output_path='samples/output_MossFormer2_SR_48K_speech2.wav')
 
 ##-----Demo Three: use MossFormer2_SE_48K model for speech enhancement -----------------
-if False:
+if True:
     myClearVoice = ClearVoice(task='speech_enhancement', model_names=['MossFormer2_SE_48K'])
 
     ##1sd calling method: process the waveform from input file and return output waveform, then write to output_MossFormer2_SE_48K_xxx with the same audio format
@@ -64,7 +64,7 @@ if False:
     myClearVoice(input_path='samples/scp/audio_samples.scp', online_write=True, output_path='samples/path_to_output_wavs_scp')
     
 ##-----Demo Four: use FRCRN_SE_16K model for speech enhancement -----------------
-if False:
+if True:
     myClearVoice = ClearVoice(task='speech_enhancement', model_names=['FRCRN_SE_16K'])
 
     ##1sd calling method: process an input waveform and return output waveform, then write to output_FRCRN_SE_16K.wav
@@ -78,7 +78,7 @@ if False:
     myClearVoice(input_path='samples/scp/audio_samples.scp', online_write=True, output_path='samples/path_to_output_wavs_scp')
     
 ##-----Demo Five: use MossFormerGAN_SE_16K model for speech enhancement -----------------
-if False:
+if True:
     myClearVoice = ClearVoice(task='speech_enhancement', model_names=['MossFormerGAN_SE_16K'])
 
     ##1sd calling method: process the waveform from input.wav and return output waveform, then write to output_MossFormerGAN_SE_16K.wav
@@ -106,7 +106,7 @@ if True:
     myClearVoice(input_path='samples/scp/audio_samples_mix.scp', online_write=True, output_path='samples/path_to_output_wavs_scp')
 
 ##-----Demo Seven: use AV_MossFormer2_TSE_16K model for audio-visual target speaker extraction ------
-if False:
+if True:
     myClearVoice = ClearVoice(task='target_speaker_extraction', model_names=['AV_MossFormer2_TSE_16K'])
 
     #1st calling method: process all video files in 'path_to_input_videos/' and write outputs to 'path_to_output_videos_tse'

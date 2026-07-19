@@ -1,21 +1,37 @@
-# MossFormer2_SE_48K C++ Runtime
+# ClearVoice C++ Runtime
 
-该目录提供不依赖 Python 的 `MossFormer2_SE_48K` 推理程序：
+该目录提供不依赖 Python 的 ClearVoice 推理程序。C++ API 通过
+`ClearVoice::Create(ModelType, model_path, provider)` 创建对应模型子类，统一处理
+分块、重叠裁剪、多说话人输出、采样率转换和 ONNX Runtime provider。
+
+支持 `clearvoice/demo.py` 中的全部模型类型：
+
+| ModelType | ONNX 输入 | C++ 前后处理 |
+|---|---|---|
+| `FRCRN_SE_16K` | 动态长度波形 | Python 对齐的幅度归一化、补齐与反归一化 |
+| `MossFormer2_SE_48K` | 496x180 fbank | fbank、delta、STFT/ISTFT、4 秒滑窗 |
+| `MossFormerGAN_SE_16K` | 压缩复数频谱 | 归一化、STFT、功率压缩/解压、ISTFT |
+| `MossFormer2_SS_16K` | 2 秒波形 | Python 对齐的特殊补齐、滑窗、双说话人 RMS |
+| `MossFormer2_SR_48K` | 动态长度波形 | 重采样、`bandwidth_sub` Butterworth 后处理 |
+| `AV_MossFormer2_TSE_16K` | 动态波形 + 灰度人脸帧 | 短音频原长推理、长音频 3 秒滑窗 |
+
+底层实现包括：
 
 - ONNX Runtime 执行神经网络；
 - kaldi-native-fbank 生成与 torchaudio/Kaldi 对齐的 fbank；
-- KissFFT 完成 1920 点 STFT/ISTFT；
-- 固定 4 秒窗口、3 秒步长处理任意长度音频；
+- KissFFT 完成模型所需的 STFT/ISTFT 和带宽检测；
 - `auto` 在 macOS 优先 CoreML，在 Windows/Linux 优先 CUDA，失败时回退 CPU。
 
 ## 当前输入范围
 
-- 48 kHz RIFF/WAV；
+- RIFF/WAV；
 - PCM 16/24/32 位或 float32；
 - 支持多声道，各声道独立增强；
+- 输入采样率不匹配时由 C++ windowed-sinc 重采样；
 - 输出为 16 位 PCM WAV。
 
-首版不包含重采样和 WAV 以外的编解码。非 48 kHz 音频应先转换为 48 kHz WAV。
+WAV 以外的编解码不属于 pure C++ runtime；可在调用前用 FFmpeg 转为 WAV。
+`MossFormer2_SR_48K` 输出固定为 48 kHz，其余模型恢复输入文件采样率。
 
 ## 1. 导出 ONNX
 
@@ -31,6 +47,25 @@ conda run -n clearer_voice python runtime/se_c_runtime/tools/export_onnx.py
 ```
 
 默认使用新版静态图导出器，生成约 232 MB 的单文件 ONNX。`--legacy` 仅用于排查兼容性；旧图不适合 CoreML。
+
+其余模型使用统一导出器：
+
+```bash
+for model in \
+  FRCRN_SE_16K \
+  MossFormerGAN_SE_16K \
+  MossFormer2_SS_16K \
+  MossFormer2_SR_48K \
+  AV_MossFormer2_TSE_16K
+do
+  conda run -n clearer_voice python \
+    runtime/se_c_runtime/tools/export_models.py "$model"
+done
+```
+
+导出器复用 Python ClearVoice 的官方权重加载逻辑，缺少 checkpoint 时会从官方
+Hugging Face 仓库下载。FRCRN、SR 和 AV 默认导出动态长度图；其余模型使用与 Python
+滑窗一致的固定图。模型文件位于 `runtime/se_c_runtime/models/`，不提交到 Git。
 
 ## 2. 构建
 
@@ -105,6 +140,43 @@ Windows 使用 CUDA 版 ONNX Runtime 时，运行阶段还需确保 `onnxruntime
 
 ## 3. 运行
 
+统一 CLI：
+
+```bash
+runtime/se_c_runtime/build/clearvoice \
+  MODEL_TYPE MODEL.onnx INPUT.wav OUTPUT.wav \
+  --provider cpu
+```
+
+分离模型自动写为 `OUTPUT_s1.wav` 和 `OUTPUT_s2.wav`。例如：
+
+```bash
+runtime/se_c_runtime/build/clearvoice \
+  MossFormer2_SS_16K \
+  runtime/se_c_runtime/models/mossformer2_ss_16k.onnx \
+  clearvoice/samples/input_ss.wav \
+  /tmp/separated.wav \
+  --provider cpu
+```
+
+AV 模型额外接收预处理视觉张量：
+
+```bash
+runtime/se_c_runtime/build/clearvoice \
+  AV_MossFormer2_TSE_16K \
+  runtime/se_c_runtime/models/av_mossformer2_tse_16k.onnx \
+  input_audio.wav output.wav \
+  --visual face_frames.f32 \
+  --provider cpu
+```
+
+`face_frames.f32` 是连续 float32 灰度帧，单帧 112x112，25 fps，归一化公式与
+Python 相同：`(gray / 255 - 0.4161) / 0.1688`。人脸检测、跟踪和裁剪属于视频
+前处理，不依赖神经网络 runtime；可复用 `clearvoice/utils/video_process.py` 产生的
+face track。
+
+原有单模型命令保持兼容：
+
 ```bash
 runtime/se_c_runtime/build/clearvoice_se \
   runtime/se_c_runtime/models/mossformer2_se_48k.onnx \
@@ -113,7 +185,9 @@ runtime/se_c_runtime/build/clearvoice_se \
   --provider auto
 ```
 
-`--provider` 可选值：`auto`、`cpu`、`coreml`、`cuda`。程序会对加速 provider 做一次非零/有限值自检；`auto` 自检失败时回退 CPU，显式指定 provider 时返回错误。
+`--provider` 可选值：`auto`、`cpu`、`coreml`、`cuda`。`auto` 在加速 provider
+无法创建会话时回退 CPU；显式指定 provider 时直接返回错误。SE 专用 runtime 还会
+执行一次非零/有限值自检。
 
 CoreML 第一次加载会编译 MLProgram，启动时间较长。部分 shape 运算保留在 CPU 属于 ONNX Runtime 的正常分区行为。
 
@@ -142,3 +216,32 @@ conda run -n clearer_voice python runtime/se_c_runtime/tools/compare_audio.py \
 | CoreML | 1 LSB | 9.4180e-7 | 93.84 dB |
 
 原 Python 代码调用 `fbank(..., dither=1.0)`，每次运行会加入随机噪声，因此无法直接要求逐样本完全相同。这里用 `dither=0` 建立可复现的数值基准。
+
+其他模型使用 `tools/reference_models.py` 生成与 C++ 分块策略一致的 PyTorch 基准。例如：
+
+```bash
+conda run -n clearer_voice python \
+  runtime/se_c_runtime/tools/reference_models.py \
+  MossFormer2_SS_16K clearvoice/samples/input_ss.wav /tmp/reference.wav
+
+runtime/se_c_runtime/build/clearvoice \
+  MossFormer2_SS_16K \
+  runtime/se_c_runtime/models/mossformer2_ss_16k.onnx \
+  clearvoice/samples/input_ss.wav /tmp/candidate.wav \
+  --provider cpu
+```
+
+本机 CPU 对齐结果：
+
+| 模型 | 基准 | SNR |
+|---|---|---:|
+| `MossFormer2_SE_48K` | deterministic PyTorch | 83.14 dB |
+| `FRCRN_SE_16K` | Python demo | 68.88 dB |
+| `MossFormerGAN_SE_16K` | fixed-window PyTorch | 76.60 dB |
+| `MossFormer2_SS_16K` speaker 1 / 2 | Python demo | 64.57 / 64.01 dB |
+| `MossFormer2_SR_48K` | same-rate Python final output | 90.67 dB |
+| `AV_MossFormer2_TSE_16K` | PyTorch, dynamic synthetic visual tensor | 76.06 dB |
+
+SR 的 16 kHz demo 输入会经过 C++ 与 librosa/soxr 不同的重采样器；波形不逐样本
+等同，但模型输出采样率、长度和处理流程一致。要求逐样本比较时，应先将输入统一
+转换为 48 kHz WAV。
